@@ -1,0 +1,12 @@
+# Firebase Admin / Sensitive Files
+upload.html
+
+# IDE / OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+node_modules/
+dist/
+build/
+.env

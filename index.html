@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eid Salami Wheel</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Login Screen -->
+        <section id="login-screen" class="screen active">
+            <div class="card">
+                <h1 class="eid-title">Eid Salami Wheel</h1>
+                <p class="subtitle">Enter your unique Eid ID to start spinning!</p>
+                <div class="input-group">
+                    <input type="text" id="user-id-input" placeholder="e.g. EID-7KX9P2" autocomplete="off">
+                    <p id="login-error" class="error-msg"></p>
+                </div>
+                <button id="start-btn" class="primary-btn">Start</button>
+            </div>
+        </section>
+
+        <!-- Wheel Screen -->
+        <section id="wheel-screen" class="screen">
+            <header class="app-header">
+                <h2 class="eid-title-small">Eid Salami Wheel</h2>
+                <div class="spins-left-badge">Spins left: <span id="spins-left-count">3</span></div>
+            </header>
+
+            <main class="wheel-container">
+                <div class="wheel-outer">
+                    <div class="wheel-pointer"></div>
+                    <div id="wheel" class="wheel">
+                        <!-- Segments & Dividers rendered via script.js -->
+                    </div>
+                </div>
+
+                <div class="result-area">
+                    <p id="total-salami" class="total-won"></p>
+                </div>
+
+                <button id="spin-btn" class="spin-btn">SPIN NOW</button>
+                <p id="wheel-error" class="error-msg"></p>
+            </main>
+        </section>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="overlay">
+            <div class="loader"></div>
+        </div>
+
+        <!-- Result Modal -->
+        <div id="result-modal" class="modal">
+            <div class="modal-box">
+                <h2 id="modal-amount">+20 টাকা</h2>
+                <p id="modal-message">বেশি ক্লোজ জুনিয়র</p>
+                <button id="close-modal">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs (Modular) -->
+    <script type="module" src="script.js"></script>
+</body>
+</html>
