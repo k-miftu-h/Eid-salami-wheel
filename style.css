@@ -223,13 +223,13 @@ input[type="text"]:focus {
 
 /* LABEL */
 .segment-label {
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 700;
     color: white;
     opacity: 0.95;
 
-    max-width: 80px; /* Tightened to force wrapping and avoid dividers */
-    line-height: 1.1;
+    max-width: 60px; /* Further tightened to force wrapping */
+    line-height: 1;
     word-wrap: break-word;
 }
 
@@ -343,11 +343,12 @@ input[type="text"]:focus {
         width: 320px;
         height: 320px;
     }
-    .segment .value {
+    .segment-value {
         font-size: 1.3rem;
     }
-    .segment .label {
+    .segment-label {
         font-size: 0.55rem;
+        max-width: 40px;
     }
     .segment-content.flipped {
         transform: rotate(180deg) translateY(-50px);

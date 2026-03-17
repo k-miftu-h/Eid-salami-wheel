@@ -174,7 +174,8 @@ function renderWheel() {
             translateY(6px)
         `;
 
-        label.textContent = opt.label;
+        // Replace spaces with <br> to force one word per line
+        label.innerHTML = opt.label.split(' ').join('<br>');
 
         wheel.appendChild(value);
         wheel.appendChild(label);
