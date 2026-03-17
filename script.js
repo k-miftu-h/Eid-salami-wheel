@@ -133,7 +133,7 @@ function renderWheel() {
     const rect = wheel.getBoundingClientRect();
     const baseRadius = (rect.width / 2 || 200);
 
-    const valueRadius = baseRadius * 0.35; // slightly more inner
+    const valueRadius = baseRadius * 0.45; // moved further from center
     const labelRadius = baseRadius * 0.65; // slightly more outer
 
     OPTIONS.forEach((opt, i) => {
