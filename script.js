@@ -1,28 +1,27 @@
-// Firebase imports (CORRECT)
+// Firebase imports (only used for JNR spin tracking)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-import { getFirestore, doc, getDoc, updateDoc, increment, setDoc } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 
-// Your Firebase config
 const firebaseConfig = {
-  apiKey: "AIzaSyCiNVhCu43Vy14kVn4-TZvBuxALSNMP1AQ",
-  authDomain: "eid-salami-wheel-25960.firebaseapp.com",
-  projectId: "eid-salami-wheel-25960",
-  storageBucket: "eid-salami-wheel-25960.firebasestorage.app",
-  messagingSenderId: "990653700750",
-  appId: "1:990653700750:web:c262807d65afd6aeea07df",
-  measurementId: "G-058ZK6GEHG"
+    apiKey: "AIzaSyCiNVhCu43Vy14kVn4-TZvBuxALSNMP1AQ",
+    authDomain: "eid-salami-wheel-25960.firebaseapp.com",
+    projectId: "eid-salami-wheel-25960",
+    storageBucket: "eid-salami-wheel-25960.firebasestorage.app",
+    messagingSenderId: "990653700750",
+    appId: "1:990653700750:web:c262807d65afd6aeea07df",
+    measurementId: "G-058ZK6GEHG"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// Initialize Firestore (THIS is what you actually need)
 const db = getFirestore(app);
 
-// --- APP STATE ---
-let currentUser = null;
+// ─── APP STATE ───────────────────────────────────────────────────────────────
 let isSpinning = false;
-let currentRotation = 0; // Track total rotation for cumulative spins
+let currentRotation = 0;
+let isUnlimitedUser = false;
+let spinsUsed = 0;
+const MAX_SPINS = 3;
+
 const OPTIONS = [
     { label: "বেশি ক্লোজ", fullLabel: "বেশি ক্লোজ জুনিয়র", value: 20 },
     { label: "অল্প ক্লোজ", fullLabel: "অল্প ক্লোজ জুনিয়র", value: 10 },
@@ -32,318 +31,243 @@ const OPTIONS = [
     { label: "ইনবক্সে সালাম", fullLabel: "ইনবক্সে সালাম দেয় জুনিয়র", value: 6 },
     { label: "সালামির জন্য সালাম", fullLabel: "সালামি নেয়ার জন্য সালাম দেয় জুনিয়র", value: 0.5 },
     { label: "খোঁজখবর", fullLabel: "খোঁজখবর রাখা জুনিয়র", value: 30 },
-    { label: "রুমে আসে", fullLabel: "রুমে আসা জুনিয়র", value: 15 },
-    { label: "ক্লাব সাড়া", fullLabel: "ক্লাবের কাজে সাড়া দেয়া জুনিয়র", value: 22 }
+    { label: "রুমে আসে", fullLabel: "রুমে আসা জুনিয়র", value: 15 },
+    { label: "ক্লাব সাড়া", fullLabel: "ক্লাবের কাজে সাড়া দেয়া জুনিয়র", value: 22 }
 ];
-const REWARDS = OPTIONS.map(opt => opt.value);
+const REWARDS = OPTIONS.map(o => o.value);
 
-// --- DOM ELEMENTS ---
+// ─── URL HELPERS ─────────────────────────────────────────────────────────────
+
+/** Returns ?bk= number or null */
+function getBkashNumber() {
+    const bk = new URLSearchParams(window.location.search).get("bk");
+    return (bk && /^\d{10,15}$/.test(bk)) ? bk : null;
+}
+
+/** Parses SALAMI-XXXXX-ROLE format, returns role or null */
+function getUserRole(code) {
+    if (!code) return null;
+    const parts = code.split("-");
+    if (parts.length < 3 || parts[0].toUpperCase() !== "SALAMI") return null;
+    return parts[parts.length - 1].toUpperCase(); // JNR / SNR / BTC
+}
+
+// ─── DOM ─────────────────────────────────────────────────────────────────────
 const loginScreen = document.getElementById('login-screen');
 const wheelScreen = document.getElementById('wheel-screen');
-const userIdInput = document.getElementById('user-id-input');
-const startBtn = document.getElementById('start-btn');
-const loginError = document.getElementById('login-error');
+const messageScreen = document.getElementById('message-screen');
+
+const codeInput = document.getElementById('code-input');
+const loginBtn = document.getElementById('login-btn');
+const errorText = document.getElementById('error-text');
 const loadingOverlay = document.getElementById('loading-overlay');
 
 const wheel = document.getElementById('wheel');
 const spinBtn = document.getElementById('spin-btn');
 const spinsLeftCount = document.getElementById('spins-left-count');
-const totalSalamiText = document.getElementById('total-salami');
+const totalSalamiTxt = document.getElementById('total-salami');
+const wheelError = document.getElementById('wheel-error');
 
-// Modal Elements
 const modal = document.getElementById('result-modal');
 const modalAmount = document.getElementById('modal-amount');
 const modalMessage = document.getElementById('modal-message');
+const modalBkash = document.getElementById('modal-bkash');
 const closeModalBtn = document.getElementById('close-modal');
-const wheelError = document.getElementById('wheel-error');
 
-// --- INITIALIZATION ---
+const messageEmoji = document.getElementById('message-emoji');
+const messageTitle = document.getElementById('message-title');
+const messageBody = document.getElementById('message-body');
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-    const savedId = sessionStorage.getItem('eid_user_id');
-    if (savedId) {
-        userIdInput.value = savedId;
-        validateUser(savedId);
+    const isPublic = new URLSearchParams(window.location.search).get("mode") === "public";
+    if (isPublic) {
+        isUnlimitedUser = true;
+        showScreen('wheel-screen');
+        setupWheelScreen();
     }
+    // else: login screen is already active by default
 });
 
-// --- CORE FUNCTIONS ---
+// ─── LOGIN HANDLER ────────────────────────────────────────────────────────────
+loginBtn.addEventListener('click', handleLogin);
+codeInput.addEventListener('keypress', e => { if (e.key === 'Enter') handleLogin(); });
 
-/**
- * Validates the User ID against Firestore
- * @param {string} userId 
- */
-async function validateUser(userId) {
-    if (!userId) {
-        showError(loginError, "Please enter an ID");
+function handleLogin() {
+    const code = codeInput.value.trim();
+    const role = getUserRole(code);
+
+    if (!role) {
+        errorText.textContent = "⚠️ Invalid code!";
+        codeInput.style.borderColor = "#d32f2f";
+        setTimeout(() => {
+            errorText.textContent = "";
+            codeInput.style.borderColor = "";
+        }, 3000);
         return;
     }
 
-    showLoading(true);
-    loginError.textContent = "";
+    handleUser(role);
+}
 
-    try {
-        const userDocRef = doc(db, "users", userId.trim());
-        const userDoc = await getDoc(userDocRef);
+// ─── ROLE-BASED ROUTING ───────────────────────────────────────────────────────
+function handleUser(role) {
+    const bkash = getBkashNumber();
+    const bkDisplay = bkash || "017XXXXXXXX";
 
-        if (!userDoc.exists()) {
-            showError(loginError, "Invalid ID. Access denied.");
-            showLoading(false);
-            return;
-        }
+    showScreen(null); // hide all
 
-        const data = userDoc.data();
-
-        if (data.active === false) {
-            showError(loginError, "This ID has been disabled.");
-            showLoading(false);
-            return;
-        }
-
-        // Success! Store user and switch screen
-        currentUser = { id: userId.trim(), ...data };
-        sessionStorage.setItem('eid_user_id', currentUser.id);
-        
+    if (role === "JNR") {
+        isUnlimitedUser = true;
         showScreen('wheel-screen');
         setupWheelScreen();
-    } catch (error) {
-        console.error("Login error:", error);
-        showError(loginError, "Connection error. Please try again.");
-    } finally {
-        showLoading(false);
+    }
+    else if (role === "BTC") {
+        showMessage(
+            "বন্ধুত্বের Token Of Appreciation জানাও এই Number এ-",
+            `📱 bKash: <strong>${bkDisplay}</strong>`
+        );
+    }
+    else if (role === "SNR") {
+        showMessage(
+            "আসসালামু আলাইকুম প্রিয় সিনিয়র ভাই, সালামি Please👉👈",
+            `📱 bKash: <strong>${bkDisplay}</strong>`
+        );
+    }
+    else {
+        errorText.textContent = "⚠️ Unknown role!";
+        showScreen('login-screen');
     }
 }
 
-/**
- * Prepares the wheel screen with user data
- */
+// ─── WHEEL SETUP ──────────────────────────────────────────────────────────────
 function setupWheelScreen() {
     renderWheel();
-    updateUI();
+    updateSpinsUI();
 }
 
-/**
- * Renders wheel segments and dividers dynamically
- */
 function renderWheel() {
     wheel.innerHTML = '';
 
-    const total = OPTIONS.length;
-    const angleStep = 360 / total;
-
-    const rect = wheel.getBoundingClientRect();
-    const baseRadius = (rect.width / 2 || 200);
-
-    const valueRadius = baseRadius * 0.45; // moved further from center
-    const labelRadius = baseRadius * 0.65; // slightly more outer
+    const baseRadius = (wheel.getBoundingClientRect().width / 2) || 200;
+    const valueRadius = baseRadius * 0.42;
+    const labelRadius = baseRadius * 0.68;
+    const angleStep = 360 / OPTIONS.length;
 
     OPTIONS.forEach((opt, i) => {
         const startAngle = i * angleStep;
         const centerAngle = startAngle + angleStep / 2;
 
-        // --- DIVIDER ---
+        // Divider line
         const divider = document.createElement('div');
         divider.className = 'divider';
-        divider.style.transform = `
-            rotate(${startAngle}deg)
-            translateY(-100%)
-        `;
+        divider.style.transform = `rotate(${startAngle}deg) translateY(-100%)`;
         wheel.appendChild(divider);
 
-        // --- VALUE (INNER) ---
+        // Value — radial (rotated 90° to follow slice)
         const value = document.createElement('div');
         value.className = 'segment-value';
-
-        value.style.transform = `
-            rotate(${centerAngle}deg)
-            translateY(-${valueRadius}px)
-            translateY(8px)
-        `;
-
+        value.style.transform = `rotate(${centerAngle}deg) translateY(-${valueRadius}px) rotate(90deg)`;
         value.textContent = opt.value;
+        wheel.appendChild(value);
 
-        // --- LABEL (OUTER) ---
+        // Label — radial
         const label = document.createElement('div');
         label.className = 'segment-label';
-
-        // Micro spread offset to prevent crowding
-        const spreadOffset = (i % 2 === 0) ? 0 : 6;
-
-        label.style.transform = `
-            rotate(${centerAngle}deg)
-            translateY(-${labelRadius + spreadOffset}px)
-            translateY(6px)
-        `;
-
-        // Replace spaces with <br> to force one word per line
+        const spreadOffset = (i % 2 === 0) ? 0 : 5;
+        label.style.transform = `rotate(${centerAngle}deg) translateY(-${labelRadius + spreadOffset}px) rotate(90deg)`;
         label.innerHTML = opt.label.split(' ').join('<br>');
-
-        wheel.appendChild(value);
         wheel.appendChild(label);
     });
 }
 
-/**
- * Handles the wheel spinning logic
- */
-async function spinWheel() {
-    if (isSpinning || !currentUser) return;
-
-    // 1. Fetch latest data from Firestore (Source of Truth)
-    showLoading(true);
-    wheelError.textContent = "";
-    
-    try {
-        const userDocRef = doc(db, "users", currentUser.id);
-        const userDoc = await getDoc(userDocRef);
-        const data = userDoc.data();
-
-        if (data.spins >= (data.maxSpins || 3)) {
-            showError(wheelError, "No spins left!");
-            spinBtn.disabled = true;
-            showLoading(false);
-            return;
-        }
-
-        showLoading(false);
-        isSpinning = true;
-        spinBtn.disabled = true;
-
-        // 2. Select Reward Index FIRST
-        const rewardIndex = Math.floor(Math.random() * REWARDS.length);
-        const rewardValue = REWARDS[rewardIndex];
-        
-        // 3. Calculate Rotation (CUMULATIVE)
-        const anglePerSegment = 360 / REWARDS.length;
-        const extraSpins = 360 * 5; // At least 5 full rotations
-        
-        // The angle needed to land on the rewardIndex segment starting from 0
-        // (360 - offset) puts the segment at the top (0deg)
-        const targetAngle = (360 - (rewardIndex * anglePerSegment) - (anglePerSegment / 2));
-        
-        // Add to current rotation to keep it spinning forward
-        // We calculate how much we need to add to reach the next 'targetAngle' position
-        const rotationToNextTarget = extraSpins + (targetAngle - (currentRotation % 360) + 360) % 360;
-        currentRotation += (rotationToNextTarget === 0 ? extraSpins : rotationToNextTarget);
-
-        wheel.style.transition = 'transform 5s cubic-bezier(0.15, 0, 0.15, 1)';
-        wheel.style.transform = `rotate(${currentRotation}deg)`;
-
-        // 4. Update Firestore after animation starts
-        // The requirement says "After animation: Update Firestore".
-        setTimeout(async () => {
-            // Update local state FIRST so UI functions see the new data
-            currentUser.spins = (data.spins || 0) + 1;
-            currentUser.lastReward = rewardValue;
-
-            // 5. Final UI Update
-            displayResult(OPTIONS[rewardIndex]);
-            showResultModal(OPTIONS[rewardIndex]);
-
-            try {
-                // 6. Update Firestore (Source of Truth)
-                await setDoc(userDocRef, {
-                    spins: currentUser.spins,
-                    lastReward: currentUser.lastReward
-                }, { merge: true });
-
-                isSpinning = false;
-                
-                if (currentUser.spins < (data.maxSpins || 3)) {
-                    spinBtn.disabled = false;
-                }
-            } catch (err) {
-                console.error("Update error:", err);
-                showError(wheelError, "Error saving result. Contact Admin.");
-                // Re-enable button on error so user can try again or at least not be stuck
-                isSpinning = false;
-                spinBtn.disabled = false;
-            }
-        }, 5100); // slightly longer than the 5s transition
-
-    } catch (error) {
-        console.error("Spin error:", error);
-        showError(wheelError, "Network error. Try again.");
-        showLoading(false);
-    }
-}
-
-// --- UI HELPERS ---
-
-function showScreen(screenId) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(screenId).classList.add('active');
-}
-
-function updateUI() {
-    const max = currentUser.maxSpins || 3;
-    const remaining = Math.max(0, max - currentUser.spins);
-    
-    spinsLeftCount.textContent = remaining;
-    
-    if (remaining <= 0) {
-        spinBtn.disabled = true;
-        totalSalamiText.textContent = `Last Reward: ${currentUser.lastReward || 0} tk Salami`;
-    } else {
-        spinBtn.disabled = false;
-        if (currentUser.lastReward) {
-            totalSalamiText.textContent = `Last Reward: ${currentUser.lastReward} tk Salami`;
-        }
-    }
-}
-
-function displayResult(option) {
-    totalSalamiText.textContent = `Last Reward: ${option.value} tk Salami`;
-    updateUI();
-}
-
-function showError(element, message) {
-    element.textContent = message;
-    setTimeout(() => {
-        element.textContent = "";
-    }, 5000);
-}
-
-/**
- * Displays the result in a modal
- */
-function showResultModal(option) {
-    modalAmount.textContent = `+${option.value} টাকা`;
-    modalMessage.textContent = option.fullLabel;
-    
-    // Slight delay to allow wheel to stop fully
-    setTimeout(() => {
-        modal.classList.add('active');
-    }, 200);
-}
-
-function showLoading(isLoading) {
-    if (isLoading) {
-        loadingOverlay.classList.add('active');
-    } else {
-        loadingOverlay.classList.remove('active');
-    }
-}
-
-// --- EVENT LISTENERS ---
-
-startBtn.addEventListener('click', () => {
-    validateUser(userIdInput.value);
-});
-
-userIdInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') validateUser(userIdInput.value);
-});
-
+// ─── SPIN LOGIC ───────────────────────────────────────────────────────────────
 spinBtn.addEventListener('click', spinWheel);
 
-// Close Modal
-closeModalBtn.addEventListener('click', () => {
-    modal.classList.remove('active');
-});
+async function spinWheel() {
+    if (isSpinning) return;
 
-// Close modal on background click
-modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-        modal.classList.remove('active');
+    // Enforce spin limit for limited users
+    if (!isUnlimitedUser) {
+        if (spinsUsed >= MAX_SPINS) {
+            showError(wheelError, "কোনো spin বাকি নেই!");
+            spinBtn.disabled = true;
+            return;
+        }
     }
-});
+
+    isSpinning = true;
+    spinBtn.disabled = true;
+    wheelError.textContent = "";
+
+    const rewardIndex = Math.floor(Math.random() * REWARDS.length);
+    const anglePerSeg = 360 / REWARDS.length;
+    const extraSpins = 360 * 5;
+    const targetAngle = 360 - (rewardIndex * anglePerSeg) - (anglePerSeg / 2);
+    const delta = extraSpins + (targetAngle - (currentRotation % 360) + 360) % 360;
+    currentRotation += delta || extraSpins;
+
+    wheel.style.transition = 'transform 5s cubic-bezier(0.15, 0, 0.15, 1)';
+    wheel.style.transform = `rotate(${currentRotation}deg)`;
+
+    setTimeout(() => {
+        spinsUsed++;
+        const opt = OPTIONS[rewardIndex];
+        totalSalamiTxt.textContent = `Last Reward: ${opt.value} tk Salami`;
+        showResultModal(opt);
+        updateSpinsUI();
+
+        isSpinning = false;
+        if (isUnlimitedUser || spinsUsed < MAX_SPINS) {
+            spinBtn.disabled = false;
+        }
+    }, 5100);
+}
+
+// ─── UI HELPERS ───────────────────────────────────────────────────────────────
+function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    if (id) document.getElementById(id).classList.add('active');
+}
+
+function showMessage(title, htmlBody) {
+    messageEmoji.style.display = 'none';
+    messageTitle.textContent = title;
+    messageBody.innerHTML = htmlBody;
+    showScreen('message-screen');
+}
+
+function updateSpinsUI() {
+    if (isUnlimitedUser) {
+        spinsLeftCount.textContent = '∞';
+    } else {
+        spinsLeftCount.textContent = Math.max(0, MAX_SPINS - spinsUsed);
+        if (spinsUsed >= MAX_SPINS) spinBtn.disabled = true;
+    }
+}
+
+function showResultModal(opt) {
+    const bkash = getBkashNumber();
+    modalAmount.textContent = `+${opt.value} টাকা`;
+    modalMessage.textContent = opt.fullLabel;
+
+    modalBkash.style.display = 'none';
+
+    setTimeout(() => modal.classList.add('active'), 200);
+}
+
+function showError(el, msg) {
+    el.textContent = msg;
+    setTimeout(() => { el.textContent = ""; }, 4000);
+}
+
+function showLoading(on) {
+    loadingOverlay.classList.toggle('active', on);
+}
+
+// Modal close
+closeModalBtn.addEventListener('click', () => modal.classList.remove('active'));
+modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+
+// Go Back (message screen)
+window.goBack = () => location.reload();
